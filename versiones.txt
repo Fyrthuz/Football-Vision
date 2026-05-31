@@ -113,5 +113,5 @@ ultralytics==8.2.32
 ultralytics-thop==0.2.8
 urllib3==2.2.1
 wcwidth==0.2.13
-Werkzeug==3.0.3
+Werkzeug==3.1.6
 wrapt==1.16.0
