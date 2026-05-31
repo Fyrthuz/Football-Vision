@@ -1,0 +1,56 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.pickle
+*.log
+*.env
+.env
+.venv/
+venv/
+ENV/
+build/
+dist/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Dataset and model artifacts
+datasets/
+models/
+train*/weights/
+yolo/**/weights/
+*.pt
+*.pth
+*.onnx
+
+# Outputs and temporary media
+output*.mp4
+output*.avi
+*.mp4
+!output3.mp4
+*.avi
+*.mov
+*.zip
+project.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+
+*.txt
+*.png
+
+
+yolo/test/images/*.jpg
+yolo/train/images/*.jpg
+yolo/valid/images/*.jpg
