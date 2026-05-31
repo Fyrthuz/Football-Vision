@@ -54,3 +54,6 @@ Thumbs.db
 yolo/test/images/*.jpg
 yolo/train/images/*.jpg
 yolo/valid/images/*.jpg
+
+!versiones.txt
+!requirements.txt

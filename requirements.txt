@@ -1,0 +1,14 @@
+torch
+ultralytics
+torchvision
+pandas
+numpy
+matplotlib
+scipy
+scikit-learn
+seaborn
+tqdm
+opencv-python
+Pillow
+supervision
+deepsort
