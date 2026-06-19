@@ -1,6 +1,6 @@
 task: detect
 mode: train
-model: yolov8s.pt
+model: yolov8m.pt
 data: ./keypoints_detection/data.yaml
 epochs: 100
 patience: 25
