@@ -102,7 +102,7 @@ tensorflow-probability==0.11.0
 termcolor==2.4.0
 threadpoolctl==3.5.0
 tifffile==2024.5.22
-torch==2.3.1
+torch==2.12.1
 torchvision==0.18.1
 tornado==6.4.1
 tqdm==4.66.4
