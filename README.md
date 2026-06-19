@@ -138,8 +138,9 @@ batch_processor/          # Celery worker
 training/                 # Training & tools
 ├── train_keypoints.py
 ├── train_detection.py
-├── field_template.py     # Generates football_field.png
+├── field_template.py     # Generates football_field.png + keypoints overlay
 ├── map_keypoints.py      # Interactive keypoint mapping tool
+├── compute_keypoints.py  # Computes keypoint positions from pitch proportions
 ├── convert_pose_to_detection.py
 ├── download_datasets.py
 └── configs/keypoints.yaml
