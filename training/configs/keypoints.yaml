@@ -1,0 +1,25 @@
+task: detect
+mode: train
+model: yolov8s.pt
+data: ./keypoints_detection/data.yaml
+epochs: 100
+patience: 25
+batch: 8
+imgsz: 1280
+cache: true
+workers: 4
+optimizer: AdamW
+lr0: 0.001
+close_mosaic: 10
+pretrained: true
+amp: true
+plots: true
+val: true
+
+degrees: 10.0
+translate: 0.1
+scale: 0.3
+shear: 0.0
+perspective: 0.0
+fliplr: 0.5
+flipud: 0.0

@@ -1,0 +1,265 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from app.config import RESULTS_DIR
+from app.schemas import DetectionLabel, ProjectedPosition
+from app.services.classifier import TeamClassifier, get_player_team_color
+from app.services.detector import Detector
+from app.services.homography import (
+    HomographyEstimator,
+    KeypointFilter,
+    annotate_frame,
+    create_field_overlay,
+    get_field_keypoints,
+    load_field_image,
+    project_positions,
+)
+from app.services.tracker import BallTracker, PlayerTracker
+from batch_processor.celery_app import celery_app
+
+_BATCH_SIZE = 64
+
+
+@celery_app.task(bind=True, name="process_video")
+def process_video_task(self, video_path: str, job_id: str) -> dict:
+    result_dir = RESULTS_DIR / job_id
+    result_dir.mkdir(parents=True, exist_ok=True)
+    output_video_path = result_dir / "output.mp4"
+    output_json_path = result_dir / "data.json"
+
+    detector = Detector()
+    detector.load_models()
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    field_height = 288
+    temp_video_path = result_dir / "output_temp.mp4"
+    out = cv2.VideoWriter(
+        str(temp_video_path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (frame_width, frame_height + field_height),
+    )
+
+    field_keypoints = get_field_keypoints()
+    field_image = load_field_image()
+    if field_image is None:
+        field_image = np.zeros((field_height, frame_width, 3), dtype=np.uint8)
+
+    ball_tracker = BallTracker()
+    homography_estimator = HomographyEstimator()
+    player_tracker = PlayerTracker(fps=float(fps))
+    team_clf = TeamClassifier()
+    kp_filter = KeypointFilter()
+
+    all_frames_data: list[dict] = []
+    frame_count = 0
+
+    try:
+        while True:
+            batch_frames: list[np.ndarray] = []
+            batch_indices: list[int] = []
+            for _ in range(_BATCH_SIZE):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                batch_frames.append(frame)
+                batch_indices.append(frame_count)
+                frame_count += 1
+
+            if not batch_frames:
+                break
+
+            # Batched keypoint inference
+            kp_results = detector.keypoint_model(batch_frames, verbose=False)
+
+            for i, frame in enumerate(batch_frames):
+                # Player tracking per-frame (needs sequential state)
+                detections = detector.track_players(frame)
+
+                # Extract keypoints from batched result
+                raw_kps = detector._parse_keypoints(kp_results[i])
+
+                # Temporal smoothing + outlier rejection
+                filtered_kps = kp_filter.update(raw_kps)
+
+                player_colors_this_frame: list[list[float]] = []
+                for det in detections:
+                    if det.label in (DetectionLabel.player, DetectionLabel.goalkeeper):
+                        crop = frame[det.bbox.y1 : det.bbox.y2, det.bbox.x1 : det.bbox.x2]
+                        color = get_player_team_color(crop)
+                        if color is not None:
+                            cl = color.tolist()
+                            det.player_color = cl
+                            player_colors_this_frame.append(cl)
+
+                team_clf.update(player_colors_this_frame)
+
+                for det in detections:
+                    if det.player_color is not None and team_clf.colors_ready:
+                        det.team = team_clf.assign(det.player_color)
+
+                ball_center = None
+                for det in detections:
+                    if det.label == DetectionLabel.ball:
+                        cx = (det.bbox.x1 + det.bbox.x2) // 2
+                        cy = (det.bbox.y1 + det.bbox.y2) // 2
+                        ball_center = (cx, cy)
+
+                ball_center_px = ball_tracker.update(ball_center)
+
+                H = homography_estimator.update(filtered_kps, field_keypoints, conf_threshold=0.5)
+
+                # Only draw keypoints used as inliers in the homography
+                inlier_labels = homography_estimator.inlier_labels
+                draw_kps = [kp for kp in filtered_kps if str(kp.index + 1) in inlier_labels]
+
+                projected_positions: list[ProjectedPosition] = []
+                projected_raw: list = []
+
+                if H is not None and detections:
+                    projected_raw = project_positions(detections, H)
+                    projected_positions = [
+                        ProjectedPosition(x=fx, y=fy, team=team, label=label, tracking_id=tid)
+                        for fx, fy, team, label, tid in projected_raw
+                    ]
+
+                player_tracker.update(
+                    detections,
+                    projected_positions,
+                    (float(ball_center_px[0]), float(ball_center_px[1])) if ball_center_px else None,
+                )
+                player_stats = player_tracker.get_stats()
+
+                annotated = annotate_frame(frame, detections, team_clf.team_1_color, team_clf.team_2_color, keypoints=draw_kps or None)
+
+                field_overlay = create_field_overlay(
+                    field_image, projected_raw, team_clf.team_1_color, team_clf.team_2_color,
+                    active_kp_labels=inlier_labels or None,
+                )
+
+                concat = np.zeros(
+                    (annotated.shape[0] + field_overlay.shape[0], frame_width, 3),
+                    dtype=np.uint8,
+                )
+                concat[: annotated.shape[0], :] = annotated
+                pad_x = (frame_width - field_overlay.shape[1]) // 2
+                if pad_x > 0:
+                    field_overlay = cv2.copyMakeBorder(
+                        field_overlay, 0, 0, pad_x, pad_x, cv2.BORDER_CONSTANT, value=(0, 0, 0)
+                    )
+                concat[annotated.shape[0] :, :field_overlay.shape[1]] = field_overlay
+
+                out.write(concat)
+
+                fidx = batch_indices[i]
+                frame_data = {
+                    "frame": fidx,
+                    "detections": [
+                        {
+                            "bbox": d.bbox.model_dump(),
+                            "label": d.label.value,
+                            "confidence": d.confidence,
+                            "tracking_id": d.tracking_id,
+                            "player_color": d.player_color,
+                            "team": d.team,
+                        }
+                        for d in detections
+                    ],
+                    "keypoints": [
+                        {"index": k.index, "x": k.x, "y": k.y, "confidence": k.confidence}
+                        for k in filtered_kps
+                    ],
+                    "team_1_color": team_clf.team_1_color,
+                    "team_2_color": team_clf.team_2_color,
+                    "projected_positions": [
+                        {"x": px, "y": py, "team": pt, "label": pl, "tracking_id": ptid}
+                        for px, py, pt, pl, ptid in projected_raw
+                    ],
+                    "ball_center": ball_center_px,
+                    "homography_matrix": H.tolist() if H is not None else None,
+                    "player_stats": [
+                        {
+                            "tracking_id": s.tracking_id,
+                            "label": s.label,
+                            "team": s.team,
+                            "total_distance": s.total_distance,
+                            "avg_speed": s.avg_speed,
+                            "top_speed": s.top_speed,
+                            "touches": s.touches,
+                        }
+                        for s in player_stats
+                    ],
+                }
+                all_frames_data.append(frame_data)
+
+                progress = min(frame_count / max(total_frames, 1), 1.0)
+                self.update_state(
+                    state="PROGRESS",
+                    meta={"progress": progress, "current_frame": frame_count, "total_frames": total_frames},
+                )
+
+    finally:
+        cap.release()
+        out.release()
+        cv2.destroyAllWindows()
+
+    final_stats = player_tracker.get_stats()
+    output_data = {
+        "metadata": {
+            "total_frames": total_frames,
+            "fps": fps,
+            "frame_width": frame_width,
+            "frame_height": frame_height,
+        },
+        "frames": all_frames_data,
+        "player_stats": [
+            {
+                "tracking_id": s.tracking_id,
+                "label": s.label,
+                "team": s.team,
+                "total_distance": s.total_distance,
+                "avg_speed": s.avg_speed,
+                "top_speed": s.top_speed,
+                "touches": s.touches,
+                "heatmap_positions": s.heatmap_positions,
+            }
+            for s in final_stats
+        ],
+        "team_possession": player_tracker.get_team_possession(),
+    }
+
+    result_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_json_path, "w") as f:
+        json.dump(output_data, f, indent=2)
+
+    # Transcode to H.264 for browser compatibility
+    if temp_video_path.exists():
+        import subprocess
+        cmd = [
+            "ffmpeg", "-y", "-i", str(temp_video_path),
+            "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            str(output_video_path),
+        ]
+        subprocess.run(cmd, capture_output=True)
+        temp_video_path.unlink(missing_ok=True)
+
+    return {
+        "job_id": job_id,
+        "total_frames": total_frames,
+        "output_video": str(output_video_path),
+        "output_json": str(output_json_path),
+    }

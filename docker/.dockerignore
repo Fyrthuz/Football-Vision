@@ -1,0 +1,15 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+.ipynb_checkpoints
+notebooks
+.vscode
+.idea
+*.md
+versiones.txt
+*.jpg
+*.png
+*.mp4
+tests/

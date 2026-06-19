@@ -1,0 +1,62 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    env_file: ../.env
+    shm_size: 8g
+    volumes:
+      - ..:/app
+      - /app/notebooks
+      - model_cache:/root/.cache
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: celery -A batch_processor.celery_app worker --loglevel=info --concurrency=1
+    env_file: ../.env
+    shm_size: 8g
+    volumes:
+      - ..:/app
+      - /app/notebooks
+      - model_cache:/root/.cache
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  train:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: training
+    profiles:
+      - train
+    env_file: ../.env
+    shm_size: 8g
+    volumes:
+      - ..:/app
+      - /app/notebooks
+      - model_cache:/root/.cache
+
+volumes:
+  model_cache:

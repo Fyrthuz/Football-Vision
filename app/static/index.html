@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Vision</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>Football Vision</h1>
+  <nav>
+    <a href="#batch" class="active" data-tab="batch">Batch</a>
+    <a href="#health" data-tab="health">Health</a>
+  </nav>
+</header>
+
+<main>
+  <section id="batch" class="tab-content active">
+    <h2>Batch Processing</h2>
+    <div class="card">
+      <form id="upload-form">
+        <label>Upload Video</label>
+        <input type="file" id="video-file" accept="video/*" required>
+        <button type="submit" class="btn">Upload &amp; Process</button>
+      </form>
+
+      <div id="batch-progress" class="output-box" style="margin-top:1rem"></div>
+
+      <h3 style="margin-top:1.5rem">Your Jobs</h3>
+      <div class="table-wrapper">
+        <table id="job-history-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Status</th>
+              <th>Progress</th>
+              <th>Duration</th>
+              <th>Players</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="job-history-body">
+            <tr><td colspan="6">No jobs yet — upload a video above</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="batch-detail-section" style="display:none; margin-top:1.5rem">
+        <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+          <h3 style="margin:0" id="batch-detail-title">Job Details</h3>
+          <button onclick="closeBatchDetail()" class="btn" style="font-size:0.8rem">Close</button>
+        </div>
+
+        <div id="batch-video-player" style="margin-bottom:1rem">
+          <video id="batch-result-video" controls style="width:100%;max-height:480px;border-radius:8px"></video>
+        </div>
+
+        <h3>Match Summary</h3>
+        <div class="summary-grid" id="batch-summary-grid">
+          <div class="stat-card"><span class="stat-label">Duration</span><span class="stat-value" id="stat-duration">—</span></div>
+          <div class="stat-card"><span class="stat-label">Resolution</span><span class="stat-value" id="stat-resolution">—</span></div>
+          <div class="stat-card"><span class="stat-label">Frames</span><span class="stat-value" id="stat-frames">—</span></div>
+          <div class="stat-card"><span class="stat-label">Players Tracked</span><span class="stat-value" id="stat-players">—</span></div>
+          <div class="stat-card"><span class="stat-label">Total Distance</span><span class="stat-value" id="stat-distance">—</span></div>
+          <div class="stat-card"><span class="stat-label">Avg Speed</span><span class="stat-value" id="stat-speed">—</span></div>
+          <div class="stat-card"><span class="stat-label">Total Touches</span><span class="stat-value" id="stat-touches">—</span></div>
+          <div class="stat-card"><span class="stat-label">Possession</span><span class="stat-value" id="stat-possession">—</span></div>
+        </div>
+
+        <h3 style="margin-top:1.5rem">Per-Player Stats <span style="font-size:0.75rem;color:rgba(255,255,255,0.4);font-weight:400">(click a row for details)</span></h3>
+        <div class="table-wrapper">
+          <table id="batch-player-stats">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Label</th>
+                <th>Team</th>
+                <th>Distance (m)</th>
+                <th>Avg Speed (m/s)</th>
+                <th>Top Speed (m/s)</th>
+                <th>Touches</th>
+              </tr>
+            </thead>
+            <tbody id="batch-player-body"></tbody>
+          </table>
+        </div>
+
+        <div id="batch-player-detail" class="player-detail" style="display:none">
+          <h3>Player Detail <span id="batch-detail-close" style="cursor:pointer;float:right;font-size:1.2rem">&times;</span></h3>
+          <div class="detail-grid">
+            <div class="detail-info">
+              <p><strong>Tracking ID:</strong> <span id="batch-detail-id"></span></p>
+              <p><strong>Label:</strong> <span id="batch-detail-label"></span></p>
+              <p><strong>Team:</strong> <span id="batch-detail-team"></span></p>
+              <p><strong>Total Distance:</strong> <span id="batch-detail-distance"></span> m</p>
+              <p><strong>Avg Speed:</strong> <span id="batch-detail-avg-speed"></span> m/s</p>
+              <p><strong>Top Speed:</strong> <span id="batch-detail-top-speed"></span> m/s</p>
+              <p><strong>Touches:</strong> <span id="batch-detail-touches"></span></p>
+            </div>
+            <div class="detail-heatmap">
+              <p><strong>Heatmap</strong></p>
+              <canvas id="batch-detail-heatmap-canvas" width="211" height="144"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="health" class="tab-content">
+    <h2>System Health</h2>
+    <div class="card">
+      <div id="health-status">Loading...</div>
+      <button onclick="checkHealth()" class="btn">Refresh</button>
+    </div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

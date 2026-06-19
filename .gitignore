@@ -1,4 +1,4 @@
-# Python artifacts
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -6,54 +6,57 @@ __pycache__/
 *.pkl
 *.pickle
 *.log
-*.env
 .env
+.env.*
+!.env.example
 .venv/
 venv/
 ENV/
 build/
 dist/
+*.egg-info/
 
 # Jupyter
 .ipynb_checkpoints/
 
-# PyCharm
+# IDE
 .idea/
-
-# VS Code
 .vscode/
 
-# Dataset and model artifacts
+# Datasets
 datasets/
+keypoints_detection/
+yolo/
+
+# Model weights (tracking not needed, download/train produces them)
 models/
-train*/weights/
-yolo/**/weights/
 *.pt
 *.pth
 *.onnx
 
-# Outputs and temporary media
+# Training runs (reproducible from training/)
+runs/
+train2/
+train4/
+
+# Produced media (uploads, output videos, results)
+data/
+videos/
 output*.mp4
 output*.avi
-*.mp4
-!output3.mp4
-*.avi
-*.mov
 *.zip
 project.zip
 
-# OS files
+# Generated images (regenerate with training.field_template)
+football_field.png
+football_field_keypoints.png
+
+# Random test files in root
+*.jpg
+result.jpg
+result.png
+versiones.txt
+
+# OS
 .DS_Store
 Thumbs.db
-
-
-*.txt
-*.png
-
-
-yolo/test/images/*.jpg
-yolo/train/images/*.jpg
-yolo/valid/images/*.jpg
-
-!versiones.txt
-!requirements.txt
