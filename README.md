@@ -202,28 +202,26 @@ docker compose -f docker/docker-compose.yml run --rm train training.field_templa
 ## Optimizations
 
 | Optimization | Before | After | Gain |
-|---|---|---|---|---|
-| **Model runtime** | PyTorch CPU (FP32) | **ONNX CUDA** | Automatic |
-| **Player model swap** | YOLOv8x (131 MB, 68.2M params) | YOLOv8m (50 MB, 25.8M params) | — |
-| **Player inference** | PyTorch CPU batch=1 (27 fps) | ONNX CUDA batch=8 (70 fps) | **2.6×** |
-| **Keypoint inference (1280px)** | ONNX default 640px (374 fps, 0 detections) | ONNX CUDA 1280px (89 fps, **10–12 kp/frame**) | **Correct pitch registration** |
-| **Combined pipeline** | PyTorch CPU (— fps) | ONNX CUDA batch=2 (**34 fps** model-only) | — |
-| **Player tracking batch** | `track()` forces `batch=1` (26 fps) | `track(batch=8)` batches n frames (70 fps) | **2.7×** |
-| **Optimal batch size** | Batch=1 (32 fps combined) | Batch=2 (**34 fps** combined) | **+5%** |
-| **Tracking overhead (real video)** | — | `track(batch=N)` vs `predict()`: **0–1%** overhead | Negligible |
-| **Tests passing** | 2 homography tests failing | All **37 tests pass** | Fixed confidence threshold + inertia filter test |
-| **Video encoding** | mp4v + ffmpeg transcode | ffmpeg pipe (libx264 direct) | Eliminates final transcode |
-| **Color extraction** | Per-frame KMeans on every player crop | Cached per track ID (recalc every 30 frames) + position-hash cache for non-tracking mode | ~90% fewer KMeans calls |
-| **Memory allocation** | `np.zeros` + 2 full copies per frame | Pre-allocated concat buffer, draw in-place | ~12 MB saved per frame |
-| **Frame JSON output** | Accumulated in RAM (`all_frames_data`) | Written to disk incrementally (JSONL) | Eliminates OOM risk |
-| **Per-frame JSON size** | Included redundant `player_stats` | Only final stats at end | ~50% smaller frame data |
-| **Frontend polling** | `setInterval` + `setTimeout` dual polling | Single polling, cleared during active job | Reduced server load |
-| **Row click** | `viewJob` triggered twice (row + button) | `event.stopPropagation()` on button | Prevents double fetch |
-| **Unused imports** | `OrderedDict`, `typing.Any`, `Field` | Removed | Cleaner code |
-| **Video encoding** | libx264 software (~25 fps) | h264_nvenc GPU hardware (**~25 fps**) | Negligible (bottleneck is model + processing) |
-| **Encoder auto-detect** | Hardcoded libx264 | Auto-detects `h264_nvenc` / falls back to `libx264` | Works on CPU-only hosts |
-| **ONNX warmup** | — | `predict()` before first `track()` | Fixes dynamic batch Reshape error |
-| **Keypoint model imgsz fix** | Default 640px (0 keypoints, H=None) | `overrides['imgsz'] = 1280` in `detector.py:22` | **10–12 keypoints/frame, homography works** |
+|---|---|---|---|
+| **Model runtime** | PyTorch CPU (FP32) | ONNX CUDA | Automatic |
+| **Player model** | YOLOv8x (131 MB, 68.2M params) | YOLOv8m (50 MB, 25.8M params) | — |
+| **Player inference** | PyTorch batch=1 (27 fps) | ONNX batch=8 (70 fps) | **2.6×** |
+| **Keypoint inference** | ONNX default 640px (374 fps, 0 detections) | ONNX 1280px (89 fps, **10–12 kp/frame**) | Correct pitch registration |
+| **Pipeline (models only)** | PyTorch CPU (—) | ONNX batch=2 (**34 fps**) | — |
+| **Tracking batching** | `track()` forces batch=1 (26 fps) | `track(batch=8)` (70 fps) | **2.7×** |
+| **Optimal batch size** | Batch=1 (32 fps) | Batch=2 (**34 fps**) | **+5%** |
+| **Tracking overhead** | — | `track(batch=N)` vs `predict()` (0–1%) | Negligible |
+| **Tests** | 2 homography tests failing | **37 tests pass** | Fixed confidence + inertia filter |
+| **Encoder** | mp4v + ffmpeg transcode | ffmpeg pipe (libx264 direct) | Eliminates transcode |
+| **Team colours** | KMeans on every player each frame | Cached by track ID (30-frame TTL) + position hash for non-tracking | ~90% fewer KMeans |
+| **Memory** | `np.zeros` + 2 copies per frame | Pre-allocated concat buffer, draw in-place | ~12 MB/frame saved |
+| **Frame JSON** | Accumulated in RAM | Written incrementally (JSONL) | No OOM risk |
+| **Frontend** | Dual polling (`setInterval` + `setTimeout`) | Single poll, cleared during active job | Less server load |
+| **Row click** | `viewJob` fired twice | `event.stopPropagation()` on button | No double fetch |
+| **Encoder comparison** | libx264 (~25 fps) | h264_nvenc (~25 fps) | Negligible (model is bottleneck) |
+| **Encoder detection** | Hardcoded libx264 | Auto-detect `h264_nvenc` → fallback `libx264` | Works on CPU-only hosts |
+| **ONNX warmup** | — | `predict()` before first `track()` | Fixes Reshape error on dynamic batch |
+| **Keypoint imgsz** | Default 640px (0 keypoints, H always None) | `overrides['imgsz'] = 1280` in `detector.py:22` | **10–12 kp/frame, homography works** |
 
 ## Benchmarks
 
