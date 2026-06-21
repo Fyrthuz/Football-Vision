@@ -33,13 +33,19 @@ _player_color_last_frame: dict[int, int] = {}
 
 class FfmpegWriter:
     def __init__(self, path: Path, fps: int, size: tuple[int, int]):
+        detect = subprocess.run(
+            ["ffmpeg", "-encoders"], capture_output=True, text=True, timeout=5
+        )
+        encoder = "h264_nvenc" if "h264_nvenc" in detect.stdout else "libx264"
+        enc_opts = ["-preset", "p1", "-cq", "23"] if encoder == "h264_nvenc" else ["-preset", "fast"]
+
         self.cmd = [
             "ffmpeg", "-y",
             "-f", "rawvideo", "-vcodec", "rawvideo",
             "-s", f"{size[0]}x{size[1]}",
             "-pix_fmt", "bgr24", "-r", str(fps),
             "-i", "-",
-            "-c:v", "libx264", "-preset", "fast",
+            "-c:v", encoder, *enc_opts,
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             str(path),
         ]
@@ -75,7 +81,7 @@ class FfmpegWriter:
 
 
 @celery_app.task(bind=True, name="process_video")
-def process_video_task(self, video_path: str, job_id: str) -> dict:
+def process_video_task(self, video_path: str, job_id: str, track_enabled: bool = True) -> dict:
     result_dir = RESULTS_DIR / job_id
     result_dir.mkdir(parents=True, exist_ok=True)
     output_video_path = result_dir / "output.mp4"
@@ -83,6 +89,10 @@ def process_video_task(self, video_path: str, job_id: str) -> dict:
 
     detector = Detector()
     detector.load_models()
+
+    # Warmup ONNX models (required before first track() call for dynamic batch)
+    detector.player_model.predict(np.zeros((720, 1280, 3), dtype=np.uint8), verbose=False)
+    detector.keypoint_model.predict(np.zeros((720, 1280, 3), dtype=np.uint8), verbose=False)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -138,11 +148,14 @@ def process_video_task(self, video_path: str, job_id: str) -> dict:
             # Batched keypoint inference
             kp_results = detector.keypoint_model.predict(batch_frames, verbose=False)
 
-            # Batched player detection + tracking (explícito batch=8 en track() para evitar batch=1)
-            player_results = detector.player_model.track(batch_frames, persist=True, batch=_BATCH_SIZE, verbose=False)
+            # Batched player detection (+ tracking opcional)
+            if track_enabled:
+                player_results = detector.player_model.track(batch_frames, persist=True, batch=_BATCH_SIZE, verbose=False)
+            else:
+                player_results = detector.player_model.predict(batch_frames, verbose=False)
 
             for i, frame in enumerate(batch_frames):
-                detections = detector._parse_player_detections(player_results[i], parse_tracking=True)
+                detections = detector._parse_player_detections(player_results[i], parse_tracking=track_enabled)
 
                 # Extract keypoints from batched result
                 raw_kps = detector._parse_keypoints(kp_results[i])
@@ -168,10 +181,23 @@ def process_video_task(self, video_path: str, job_id: str) -> dict:
                                     _player_color_last_frame[tid] = frame_count
                                     det.player_color = cl
                         else:
-                            crop = frame[det.bbox.y1 : det.bbox.y2, det.bbox.x1 : det.bbox.x2]
-                            color = get_player_team_color(crop)
-                            if color is not None:
-                                det.player_color = color.tolist()
+                            # Without tracking, cache by position hash to avoid repeat extraction
+                            pos_key = (det.bbox.x1 // 20, det.bbox.y1 // 20)
+                            if not hasattr(process_video_task, '_pos_color_cache'):
+                                process_video_task._pos_color_cache = {}
+                                process_video_task._pos_color_frame = {}
+                            cached_color = process_video_task._pos_color_cache.get(pos_key)
+                            last_seen_c = process_video_task._pos_color_frame.get(pos_key, -1)
+                            if cached_color is not None and (frame_count - last_seen_c) < 15:
+                                det.player_color = cached_color
+                            else:
+                                crop = frame[det.bbox.y1 : det.bbox.y2, det.bbox.x1 : det.bbox.x2]
+                                color = get_player_team_color(crop)
+                                if color is not None:
+                                    cl = color.tolist()
+                                    process_video_task._pos_color_cache[pos_key] = cl
+                                    process_video_task._pos_color_frame[pos_key] = frame_count
+                                    det.player_color = cl
                         if det.player_color is not None:
                             player_colors_this_frame.append(det.player_color)
 
@@ -206,11 +232,12 @@ def process_video_task(self, video_path: str, job_id: str) -> dict:
                         for fx, fy, team, label, tid in projected_raw
                     ]
 
-                player_tracker.update(
-                    detections,
-                    projected_positions,
-                    (float(ball_center_px[0]), float(ball_center_px[1])) if ball_center_px else None,
-                )
+                if track_enabled:
+                    player_tracker.update(
+                        detections,
+                        projected_positions,
+                        (float(ball_center_px[0]), float(ball_center_px[1])) if ball_center_px else None,
+                    )
 
                 # Draw directly into pre-allocated concat buffer (saves frame.copy + concat copy)
                 annotate_frame(frame, detections, team_clf.team_1_color, team_clf.team_2_color,
@@ -260,11 +287,12 @@ def process_video_task(self, video_path: str, job_id: str) -> dict:
                 }
                 frames_file.write(json.dumps(frame_data) + "\n")
 
-                progress = min(frame_count / max(total_frames, 1), 1.0)
-                self.update_state(
-                    state="PROGRESS",
-                    meta={"progress": progress, "current_frame": frame_count, "total_frames": total_frames},
-                )
+                if frame_count % 5 == 0:
+                    progress = min(frame_count / max(total_frames, 1), 1.0)
+                    self.update_state(
+                        state="PROGRESS",
+                        meta={"progress": progress, "current_frame": frame_count, "total_frames": total_frames},
+                    )
 
     finally:
         cap.release()
@@ -272,7 +300,13 @@ def process_video_task(self, video_path: str, job_id: str) -> dict:
         frames_file.close()
         cv2.destroyAllWindows()
 
-    final_stats = player_tracker.get_stats()
+    if track_enabled:
+        final_stats = player_tracker.get_stats()
+        team_possession = player_tracker.get_team_possession()
+    else:
+        final_stats = []
+        team_possession = {}
+
     frames_data: list[dict] = []
     with open(frames_jsonl_path) as f:
         for line in f:
@@ -286,6 +320,7 @@ def process_video_task(self, video_path: str, job_id: str) -> dict:
             "fps": fps,
             "frame_width": frame_width,
             "frame_height": frame_height,
+            "track_enabled": track_enabled,
         },
         "frames": frames_data,
         "player_stats": [
@@ -301,7 +336,7 @@ def process_video_task(self, video_path: str, job_id: str) -> dict:
             }
             for s in final_stats
         ],
-        "team_possession": player_tracker.get_team_possession(),
+        "team_possession": team_possession,
     }
 
     with open(output_json_path, "w") as f:

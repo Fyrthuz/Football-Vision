@@ -22,7 +22,11 @@
       <form id="upload-form">
         <label>Upload Video</label>
         <input type="file" id="video-file" accept="video/*" required>
-        <button type="submit" class="btn">Upload &amp; Process</button>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;font-weight:400;font-size:0.875rem">
+          <input type="checkbox" id="track-enable" checked>
+          Enable tracking (per-player stats, heatmaps, possession)
+        </label>
+        <button type="submit" class="btn" style="margin-top:0.75rem">Upload &amp; Process</button>
       </form>
 
       <div id="batch-progress" class="output-box" style="margin-top:1rem"></div>

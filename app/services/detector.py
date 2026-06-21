@@ -19,6 +19,7 @@ class Detector:
     def load_models(self) -> None:
         self.player_model = YOLO(settings.model_players_path, task='detect')
         self.keypoint_model = YOLO(settings.model_keypoints_path, task='detect')
+        self.keypoint_model.overrides['imgsz'] = 1280
         self._player_classes = self.player_model.names
 
     @property

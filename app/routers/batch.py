@@ -5,7 +5,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.config import RESULTS_DIR, UPLOAD_DIR, settings
@@ -55,7 +55,7 @@ def _get_result_files(job_id: str) -> tuple[Path | None, Path | None]:
 
 
 @router.post("/upload", response_model=BatchJobOut)
-async def upload_video(file: UploadFile) -> BatchJobOut:
+async def upload_video(file: UploadFile, track_enabled: bool = Form(True)) -> BatchJobOut:
     if not file.content_type or not file.content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="Only video files are accepted")
 
@@ -74,7 +74,7 @@ async def upload_video(file: UploadFile) -> BatchJobOut:
     from batch_processor.celery_app import celery_app
     task = celery_app.send_task(
         "process_video",
-        args=[str(video_path), job_id],
+        args=[str(video_path), job_id, track_enabled],
         task_id=job_id,
     )
 

@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     resultDiv.innerHTML = 'Uploading...';
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('track_enabled', document.getElementById('track-enable').checked ? 'true' : 'false');
     try {
       const res = await fetch('/batch/upload', { method: 'POST', body: formData });
       if (!res.ok) {
