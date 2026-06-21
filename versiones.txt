@@ -27,7 +27,7 @@ google-measurement-protocol==1.1.0
 google-pasta==0.2.0
 grpcio==1.64.1
 h5py==3.11.0
-idna==3.7
+idna==3.15
 image-classifiers==1.0.0
 imageio==2.34.1
 intel-openmp==2021.4.0
