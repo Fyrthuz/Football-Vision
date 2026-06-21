@@ -46,8 +46,9 @@ def _get_field_bounds() -> tuple[int, int]:
 
 
 class HomographyEstimator:
-    def __init__(self, window_size: int = _HOMOGRAPHY_SMOOTHING_WINDOW) -> None:
+    def __init__(self, window_size: int = _HOMOGRAPHY_SMOOTHING_WINDOW, alpha: float = 0.3) -> None:
         self.window_size = window_size
+        self.alpha = alpha
         self._history: deque[np.ndarray] = deque(maxlen=window_size)
         self._current: np.ndarray | None = None
         self._last_inlier_labels: set[str] = set()
@@ -104,7 +105,9 @@ class HomographyEstimator:
             if np.linalg.norm(p_ant - p_nue) > 25.0:
                 return self._current
 
-        # Reemplazo directo estable (Eliminado el cálculo de interpolación lineal/EMA de matrices)
+        # EMA sobre la matriz H para evitar saltos frame a frame
+        if self._current is not None:
+            H = self.alpha * H + (1.0 - self.alpha) * self._current
         self._history.append(H)
         self._current = H 
         return self._current
@@ -198,7 +201,7 @@ class KeypointFilter:
     keypoint after a camera cut is accepted immediately.
     """
 
-    def __init__(self, alpha: float = 0.6, max_jump_px: float = 80.0, max_age: int = 15) -> None:
+    def __init__(self, alpha: float = 0.4, max_jump_px: float = 60.0, max_age: int = 15) -> None:
         self.alpha = alpha
         self.max_jump_px = max_jump_px
         self.max_age = max_age
