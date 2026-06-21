@@ -10,8 +10,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    model_players_path: str = "/app/models/best_model_players.pt"
-    model_keypoints_path: str = "/app/models/best_model_keypoints.pt"
+    model_players_path: str = "/app/models/best_model_players.onnx"
+    model_keypoints_path: str = "/app/models/best_model_keypoints.onnx"
     field_keypoints_path: str = "/app/sample.json"
     field_image_path: str = "/app/football_field.png"
 

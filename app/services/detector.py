@@ -17,8 +17,8 @@ class Detector:
         self._track_history: dict[int, list[tuple[float, float]]] = {}
 
     def load_models(self) -> None:
-        self.player_model = YOLO(settings.model_players_path)
-        self.keypoint_model = YOLO(settings.model_keypoints_path)
+        self.player_model = YOLO(settings.model_players_path, task='detect')
+        self.keypoint_model = YOLO(settings.model_keypoints_path, task='detect')
         self._player_classes = self.player_model.names
 
     @property
@@ -35,8 +35,8 @@ class Detector:
         if not self.is_loaded():
             self.load_models()
 
-        player_results = self.player_model(frame, verbose=False)[0]
-        keypoint_results = self.keypoint_model(frame, verbose=False)[0]
+        player_results = self.player_model.predict(frame, verbose=False)[0]
+        keypoint_results = self.keypoint_model.predict(frame, verbose=False)[0]
 
         detections = self._parse_player_detections(player_results)
         keypoints = self._parse_keypoints(keypoint_results)
@@ -48,8 +48,8 @@ class Detector:
         if not self.is_loaded():
             self.load_models()
 
-        player_results = self.player_model.track(frame, persist=persist, verbose=False)[0]
-        keypoint_results = self.keypoint_model(frame, verbose=False)[0]
+        player_results = self.player_model.predict(frame, tracker='botsort.yaml', verbose=False)[0]
+        keypoint_results = self.keypoint_model.predict(frame, verbose=False)[0]
 
         detections = self._parse_player_detections(player_results, parse_tracking=True)
         keypoints = self._parse_keypoints(keypoint_results)
@@ -61,7 +61,7 @@ class Detector:
         if not self.is_loaded():
             self.load_models()
 
-        player_results = self.player_model.track(frame, persist=persist, verbose=False)[0]
+        player_results = self.player_model.predict(frame, tracker='botsort.yaml', verbose=False)[0]
         return self._parse_player_detections(player_results, parse_tracking=True)
 
     def _parse_player_detections(

@@ -272,8 +272,13 @@ def annotate_frame(
     team_1_color: list[float] | None,
     team_2_color: list[float] | None,
     keypoints: list[Keypoint] | None = None,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
-    annotated = frame.copy()
+    if out is not None:
+        np.copyto(out, frame)
+        annotated = out
+    else:
+        annotated = frame.copy()
     for det in detections:
         x1, y1, x2, y2 = det.bbox.x1, det.bbox.y1, det.bbox.x2, det.bbox.y2
         if det.label == DetectionLabel.ball:
@@ -311,8 +316,13 @@ def create_field_overlay(
     team_1_color: list[float] | None,
     team_2_color: list[float] | None,
     active_kp_labels: set[str] | None = None,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
-    overlay = field_image.copy()
+    if out is not None:
+        np.copyto(out, field_image)
+        overlay = out
+    else:
+        overlay = field_image.copy()
 
     # Draw field template keypoints as reference grid
     field_kps = get_field_keypoints()

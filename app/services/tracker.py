@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections import OrderedDict
-
 import cv2
 import numpy as np
 

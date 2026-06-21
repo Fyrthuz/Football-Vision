@@ -2,6 +2,7 @@ const FIELD_W = 422;
 const FIELD_H = 288;
 let selectedJobId = null;
 let fieldImg = null;
+let refreshInterval = null;
 
 (function loadFieldImage() {
   const img = new Image();
@@ -50,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   checkHealth();
   refreshJobList();
-  setInterval(refreshJobList, 4000);
+  refreshInterval = setInterval(refreshJobList, 4000);
 });
 
 async function checkHealth() {
@@ -142,13 +143,13 @@ async function refreshJobList() {
       const bar = j.status === 'processing'
         ? `<div class="progress-bar" style="height:4px"><div class="progress-fill" style="width:${Math.round(j.progress*100)}%"></div></div>${frameInfo}`
         : '';
-      return `<tr class="${selectedJobId === j.job_id ? 'selected-row' : ''}" onclick="viewJob('${j.job_id}')" style="cursor:pointer">
+      return `<tr class="${selectedJobId === j.job_id ? 'selected-row' : ''}" onclick="if (event.target.tagName!=='BUTTON') viewJob('${j.job_id}')" style="cursor:pointer">
         <td>${j.filename || j.job_id.slice(0,8)}</td>
         <td>${statusHtml}</td>
         <td>${bar || (j.status === 'done' ? '100%' : j.status === 'failed' ? '—' : '0%')}</td>
         <td>${j.duration_sec ? j.duration_sec.toFixed(1) + 's' : '—'}</td>
         <td>${j.tracked_players || '—'}</td>
-        <td>${actionsHtml}</td>
+        <td onclick="event.stopPropagation()">${actionsHtml}</td>
       </tr>`;
     }).join('');
   } catch (err) {
@@ -161,14 +162,19 @@ async function viewJob(jobId) {
   const section = document.getElementById('batch-detail-section');
   section.style.display = 'block';
   document.getElementById('batch-detail-title').textContent = 'Job: ' + jobId.slice(0, 8) + '…';
-  document.getElementById('batch-result-video').style.display = 'none';
+  const video = document.getElementById('batch-result-video');
+  video.style.display = 'none';
+  video.src = '';
+  video.load();
 
   const statusRes = await fetch('/batch/status/' + jobId);
   const statusData = await statusRes.json();
 
   if (statusData.status === 'done') {
     const videoUrl = '/batch/video/' + jobId;
-    const video = document.getElementById('batch-result-video');
+    document.getElementById('video-loading').style.display = 'flex';
+    video.oncanplay = () => document.getElementById('video-loading').style.display = 'none';
+    video.onerror = () => document.getElementById('video-loading').style.display = 'none';
     video.src = videoUrl;
     video.style.display = 'block';
     video.load();
@@ -191,6 +197,7 @@ async function deleteJob(jobId) {
 }
 
 async function pollJob(jobId) {
+  if (refreshInterval) clearInterval(refreshInterval);
   const progressDiv = document.getElementById('batch-progress');
   const poll = async () => {
     const res = await fetch('/batch/status/' + jobId);
@@ -201,15 +208,16 @@ async function pollJob(jobId) {
         ? `<span style="color:#94a3b8;font-size:0.8125rem;margin-left:0.75rem">frame ${data.current_frame} / ${data.total_frames}</span>`
         : '';
       progressDiv.innerHTML = `<span style="color:#fbbf24">● Processing: ${pct}${frames}</span><div class="progress-bar"><div class="progress-fill" style="width:${data.progress ? (data.progress*100).toFixed(0) : 0}%"></div></div>`;
-      refreshJobList();
       setTimeout(poll, 2000);
     } else if (data.status === 'done') {
       progressDiv.innerHTML = '<span style="color:#fbbf24;font-size:1.1rem">✓ Processing Complete!</span>';
       await refreshJobList();
       await viewJob(jobId);
+      refreshInterval = setInterval(refreshJobList, 4000);
     } else if (data.status === 'failed') {
       progressDiv.innerHTML = '<span style="color:#f87171">✗ Failed: ' + (data.error || 'Unknown error') + '</span>';
       await refreshJobList();
+      refreshInterval = setInterval(refreshJobList, 4000);
     }
   };
   await refreshJobList();

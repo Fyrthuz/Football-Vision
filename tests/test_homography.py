@@ -40,7 +40,7 @@ class TestHomographyEstimator:
         self, field_keypoints: dict, detected_keypoints: list[Keypoint]
     ) -> None:
         estimator = HomographyEstimator(window_size=3)
-        H = estimator.update(detected_keypoints, field_keypoints)
+        H = estimator.update(detected_keypoints, field_keypoints, conf_threshold=0.5)
         assert H is not None
         assert H.shape == (3, 3)
 
@@ -52,9 +52,10 @@ class TestHomographyEstimator:
         H = estimator.update(kps, field_keypoints)
         assert H is None
 
-    def test_smoothing_uses_median(
+    def test_inertia_filter_rejects_large_jumps(
         self, field_keypoints: dict
     ) -> None:
+        """Inertia filter rejects H update when center (960,540) projection jumps >25px."""
         estimator = HomographyEstimator(window_size=3)
         kps_a = [
             Keypoint(index=0, x=100.0, y=200.0, confidence=0.9),
@@ -72,22 +73,11 @@ class TestHomographyEstimator:
             Keypoint(index=4, x=520.0, y=430.0, confidence=0.7),
             Keypoint(index=5, x=680.0, y=320.0, confidence=0.65),
         ]
-        kps_c = [
-            Keypoint(index=0, x=130.0, y=210.0, confidence=0.9),
-            Keypoint(index=1, x=620.0, y=60.0, confidence=0.85),
-            Keypoint(index=2, x=320.0, y=410.0, confidence=0.8),
-            Keypoint(index=3, x=180.0, y=70.0, confidence=0.75),
-            Keypoint(index=4, x=510.0, y=440.0, confidence=0.7),
-            Keypoint(index=5, x=690.0, y=310.0, confidence=0.65),
-        ]
-        H1 = estimator.update(kps_a, field_keypoints)
-        H2 = estimator.update(kps_b, field_keypoints)
-        H3 = estimator.update(kps_c, field_keypoints)
+        H1 = estimator.update(kps_a, field_keypoints, conf_threshold=0.5)
+        H2 = estimator.update(kps_b, field_keypoints, conf_threshold=0.5)
         assert H1 is not None
-        assert H2 is not None
-        assert H3 is not None
-        # Median of [Ha, Hb, Hc] should differ from Ha
-        assert not np.allclose(H1, H3)
+        # Large keypoint difference → inertia filter blocks update → H2 is H1
+        assert H2 is H1
 
     def test_low_confidence_keypoints_filtered(
         self, field_keypoints: dict
